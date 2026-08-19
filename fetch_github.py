@@ -16,8 +16,9 @@ import requests
 
 from fetch_common import add_ARGS, github_token, read_json, resolve_period, write_json
 
-ORG = "nesi"
-DOCS_REPO = "support-docs"
+ORGS = ["nesi", "GenomicsAotearoa", "AgResearch"]
+DOCS_REPO = "nesi/support-docs"
+TEAM_MEMBERS = "nesi/teams/researcher-support"
 EXTRA_MEMBERS = ["nesi-mkdocs-bot"]  # not a human team member, but should count
 
 SEARCH_DELAY_SECONDS = 3  # search API: 30 req/min even authenticated
@@ -83,7 +84,7 @@ def _issue_date(item):
 
 
 def team_members():
-    members = _get(f"https://api.github.com/orgs/{ORG}/teams/researcher-support/members")
+    members = _get(f"https://api.github.com/orgs/{TEAM_MEMBERS}")
     logins = [m["login"] for m in members]
     return logins + EXTRA_MEMBERS
 
@@ -93,7 +94,7 @@ def docs_events(login, since, until):
     new markdown pages added per commit."""
     events = []
     commits = _get(
-        f"https://api.github.com/repos/{ORG}/{DOCS_REPO}/commits",
+        f"https://api.github.com/repos/{DOCS_REPO}/commits",
         params={
             "author": login,
             "since": f"{since}T00:00:00Z",
@@ -102,7 +103,7 @@ def docs_events(login, since, until):
         },
     )
     for c in commits:
-        detail = _get(f"https://api.github.com/repos/{ORG}/{DOCS_REPO}/commits/{c['sha']}")
+        detail = _get(f"https://api.github.com/repos/{DOCS_REPO}/commits/{c['sha']}")
         new_pages = [
             file["filename"] for file in detail.get("files", [])
             if file["status"] == "added" and file["filename"].endswith(".md")
@@ -116,13 +117,13 @@ def docs_events(login, since, until):
 
     for item in _search(
         "issues",
-        f"repo:{ORG}/{DOCS_REPO} is:pr is:merged author:{login} merged:{since}..{until}",
+        f"repo:{DOCS_REPO} is:pr is:merged author:{login} merged:{since}..{until}",
     ):
         events.append({"login": login, "date": _issue_date(item)[:10], "kind": "pr_merged"})
 
     for item in _search(
         "issues",
-        f"repo:{ORG}/{DOCS_REPO} is:issue author:{login} created:{since}..{until}",
+        f"repo:{DOCS_REPO} is:issue author:{login} created:{since}..{until}",
     ):
         events.append({"login": login, "date": _issue_date(item)[:10], "kind": "issue"})
 
@@ -131,14 +132,15 @@ def docs_events(login, since, until):
 
 def other_events(login, since, until):
     # Exclude docs
-    exclude = f"-repo:{ORG}/{DOCS_REPO}"
+    exclude = f"-repo:{DOCS_REPO}"
     events = []
-    for item in _search("commits", f"org:{ORG} {exclude} author:{login} author-date:{since}..{until}"):
-        events.append({"login": login, "date": _commit_date(item)[:10], "kind": "commit", "repo": _commit_repo(item)})
-    for item in _search("issues", f"org:{ORG} {exclude} is:pr is:merged author:{login} merged:{since}..{until}"):
-        events.append({"login": login, "date": _issue_date(item)[:10], "kind": "pr_merged", "repo": _issue_repo(item)})
-    for item in _search("issues", f"org:{ORG} {exclude} is:issue author:{login} created:{since}..{until}"):
-        events.append({"login": login, "date": _issue_date(item)[:10], "kind": "issue", "repo": _issue_repo(item)})
+    for org in ORGS:
+        for item in _search("commits", f"org:{org} {exclude} author:{login} author-date:{since}..{until}"):
+            events.append({"login": login, "date": _commit_date(item)[:10], "kind": "commit", "repo": _commit_repo(item)})
+        for item in _search("issues", f"org:{org} {exclude} is:pr is:merged author:{login} merged:{since}..{until}"):
+            events.append({"login": login, "date": _issue_date(item)[:10], "kind": "pr_merged", "repo": _issue_repo(item)})
+        for item in _search("issues", f"org:{org} {exclude} is:issue author:{login} created:{since}..{until}"):
+            events.append({"login": login, "date": _issue_date(item)[:10], "kind": "issue", "repo": _issue_repo(item)})
     return events
 
 

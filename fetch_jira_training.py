@@ -23,18 +23,12 @@ PROJECT = "TRNG"
 CACHE_FILE = Path("data/training_cache.json")
 
 FIELD_MAP = {
-    "event_type": "customfield_11454",       # single-select, value under .value
-    "event_name": "customfield_11455",
     "start_date": "customfield_11456",
-    "end_date": "customfield_11457",
-    "event_length": "customfield_11459",
     "hours_coordination": "customfield_11460",
     "hours_instruction": "customfield_11461",
     "hours_support": "customfield_11462",
     "hours_material_prep": "customfield_11463",
-    "registrants": "customfield_11468",
     "attendees": "customfield_11469",
-    "seat_cap": "customfield_11629",
 }
 
 _session = jira_session(JIRA_BASE_URL, JIRA_USER, JIRA_API_TOKEN)

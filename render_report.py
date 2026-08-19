@@ -42,6 +42,9 @@ SECTION_COLOR = {
     "builds": "#008300",
 }
 
+RESPONSE_HOURS_OUTLIER_CAP = 48       # 2 days
+SOLVE_DAYS_OUTLIER_CAP = 30           # 1 month
+
 HOUR_BUCKETS = [
     ("hours_material_prep", "Material prep"),
     ("hours_coordination", "Coordination"),
@@ -200,6 +203,28 @@ def chart_category(df, month_start, month_end):
     return "Tickets by category", chart_html(fig)
 
 
+def chart_response_distribution(df, month_start, month_end):
+    scoped = df[
+        (df["created"] >= month_start) & (df["created"] <= month_end)
+        & (df["category"] != "Admin")
+    ].copy()
+    scoped["category"] = scoped["category"].fillna("Unset")
+    scoped = scoped.dropna(subset=["time_to_first_response_hours"])
+    scoped = scoped[scoped["time_to_first_response_hours"] <= RESPONSE_HOURS_OUTLIER_CAP]
+    order = scoped.groupby("category")["time_to_first_response_hours"].median().sort_values().index.tolist()
+
+    fig = px.box(
+        scoped, x="category", y="time_to_first_response_hours",
+        category_orders={"category": order},
+        points=False,
+    )
+    fig.update_traces(marker_color=SECTION_COLOR["tickets"], hovertemplate="%{x}: %{y:.1f} hrs<extra></extra>")
+    fig.update_xaxes(title=None)
+    fig.update_yaxes(title="Hours to first response")
+    style_layout(fig, orientation="v", height=340)
+    return "First response time by category", chart_html(fig)
+
+
 def chart_effort(df, month_start, month_end):
     scoped = df[(df["created"] >= month_start) & (df["created"] <= month_end)]
     order = ["Unset", "Low", "Medium", "High"]
@@ -350,15 +375,8 @@ def ticket_pills(df, month_start_ts, month_end_ts, prev_start_ts):
     # Filter out admin tickets
     non_admin = this_month[this_month["category"] != "Admin"]
 
-    response_hours = non_admin["time_to_first_response_hours"].dropna()
-    if len(response_hours):
-        response_figure = f"{response_hours.mean():.1f} hrs"
-        response_sub = f"std dev {response_hours.std():.1f} hrs"
-    else:
-        response_figure = "no data"
-        response_sub = "time to first response"
-
     solve_days = non_admin["resolution_days"].dropna()
+    solve_days = solve_days[solve_days <= SOLVE_DAYS_OUTLIER_CAP]
     if len(solve_days):
         solve_figure = f"{solve_days.mean():.1f} days"
         solve_sub = f"std dev {solve_days.std():.1f} days"
@@ -370,7 +388,6 @@ def ticket_pills(df, month_start_ts, month_end_ts, prev_start_ts):
         ("Volume", f"{volume:,} tickets", f"{delta:+d} vs. prior month"),
         ("Quality", f"{pct_positive:.0%} positive" if pct_positive is not None else "no ratings yet",
          f"{len(csat)} CSAT responses"),
-        ("Time to first response", response_figure, response_sub),
         ("Average solve time", solve_figure, solve_sub),
     ]
 
@@ -487,6 +504,7 @@ def render(month_start, month_end):
             chart_block(chart_institutions(df, month_start_ts, month_end_ts), tickets_color),
             chart_block(chart_category(df, month_start_ts, month_end_ts), tickets_color),
         ),
+        chart_block(chart_response_distribution(df, month_start_ts, month_end_ts), tickets_color),
         chart_row(
             chart_block(chart_effort(df, month_start_ts, month_end_ts), tickets_color),
             chart_block(chart_csat(df, month_start_ts, month_end_ts), tickets_color),
