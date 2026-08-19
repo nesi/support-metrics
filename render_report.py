@@ -541,7 +541,7 @@ def render(month_start, month_end):
         image_block(wordcloud_entry, tickets_color),
     ]))
     tickets_section = section_html(
-        "Strategic Customer Support Ticket Performance", tickets_color,
+        "Customer Satisfaction & Ticket Performance", tickets_color,
         pills_html(ticket_pills(df, month_start_ts, month_end_ts, prev_start_ts), tickets_color),
         tickets_body,
     )
@@ -558,7 +558,7 @@ def render(month_start, month_end):
     other_color = SECTION_COLOR["other"]
     other_body = chart_block(chart_repo_activity(activity), other_color)
     other_section = section_html(
-        "Full Stack Software Synergies", other_color,
+        "Full Stack Software Contributions", other_color,
         pills_html(other_pills(activity), other_color),
         other_body,
     )
@@ -575,7 +575,7 @@ def render(month_start, month_end):
     # Software Builds
     modules = load_modules(month_start, month_end)
     builds_section = section_html(
-        "Mission-Critical Software Build Deliverables", SECTION_COLOR["builds"],
+        "Software Build Deliverables", SECTION_COLOR["builds"],
         pills_html(builds_pills(modules), SECTION_COLOR["builds"]),
         builds_body(modules),
     )
