@@ -56,6 +56,7 @@ SUFFIX_TERTIARY = [
     ("nmit.ac.nz",         "NMIT"),
     ("ara.ac.nz",          "Ara"),
     ("weltec.ac.nz",       "WelTec / Whitireia"),
+    ("wintec.ac.nz",       "WinTec"),
     ("whitireia.ac.nz",    "WelTec / Whitireia"),
 ]
 SUFFIX_PRO = [

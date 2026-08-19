@@ -538,7 +538,7 @@ def render(month_start, month_end):
         sections=tickets_section + docs_section + other_section + training_section + builds_section,
     )
 
-    out_path = Path("public") / "index.html "
+    out_path = Path("public") / "index.html"
     out_path.parent.mkdir(exist_ok=True)
     out_path.write_text(html)
     print(f"Wrote {out_path}")
