@@ -84,22 +84,35 @@ def _issue_date(item):
 
 
 def team_members():
-    members = _get(f"https://api.github.com/orgs/{TEAM_MEMBERS}")
+    members = _get(f"https://api.github.com/orgs/{TEAM_MEMBERS}/members")
     logins = [m["login"] for m in members]
     return logins + EXTRA_MEMBERS
 
 
-def docs_events(login, since, until):
-    """Raw dated commit/PR/issue events for `login` on the docs repo, including
-    new markdown pages added per commit."""
+def _get_all_pages(url, params=None):
+    """Page through a REST (non-search) endpoint, returning all items."""
+    items = []
+    page = 1
+    params = dict(params or {}, per_page=100)
+    while True:
+        params["page"] = page
+        batch = _get(url, params=params)
+        items.extend(batch)
+        if len(batch) < 100:
+            break
+        page += 1
+    return items
+
+
+def docs_events(since, until):
+    """Raw dated commit/PR/issue events on the docs repo, from any contributor
+    (not just team members), including new markdown pages added per commit."""
     events = []
-    commits = _get(
+    commits = _get_all_pages(
         f"https://api.github.com/repos/{DOCS_REPO}/commits",
         params={
-            "author": login,
             "since": f"{since}T00:00:00Z",
             "until": f"{until}T23:59:59Z",
-            "per_page": 100,
         },
     )
     for c in commits:
@@ -109,7 +122,6 @@ def docs_events(login, since, until):
             if file["status"] == "added" and file["filename"].endswith(".md")
         ]
         events.append({
-            "login": login,
             "date": c["commit"]["committer"]["date"][:10],
             "kind": "commit",
             "new_pages": new_pages,
@@ -117,15 +129,21 @@ def docs_events(login, since, until):
 
     for item in _search(
         "issues",
-        f"repo:{DOCS_REPO} is:pr is:merged author:{login} merged:{since}..{until}",
+        f"repo:{DOCS_REPO} is:pr is:merged merged:{since}..{until}",
     ):
-        events.append({"login": login, "date": _issue_date(item)[:10], "kind": "pr_merged"})
+        events.append({"date": _issue_date(item)[:10], "kind": "pr_merged"})
 
     for item in _search(
         "issues",
-        f"repo:{DOCS_REPO} is:issue author:{login} created:{since}..{until}",
+        f"repo:{DOCS_REPO} is:issue created:{since}..{until}",
     ):
-        events.append({"login": login, "date": _issue_date(item)[:10], "kind": "issue"})
+        events.append({"date": _issue_date(item)[:10], "kind": "issue_opened"})
+
+    for item in _search(
+        "issues",
+        f"repo:{DOCS_REPO} is:issue closed:{since}..{until}",
+    ):
+        events.append({"date": item["closed_at"][:10], "kind": "issue_closed"})
 
     return events
 
@@ -146,9 +164,9 @@ def other_events(login, since, until):
 
 def fetch_range(since, until, members):
     """The actual API work, for one date range and member list."""
-    docs, other = [], []
+    docs = docs_events(since, until)
+    other = []
     for login in members:
-        docs.extend(docs_events(login, since, until))
         other.extend(other_events(login, since, until))
     return docs, other
 
@@ -194,7 +212,7 @@ def ensure_range_cached(since, until, force=False):
 def aggregate(cache, since, until):
     since_s, until_s = str(since), str(until)
 
-    docs = {"commits": 0, "prs_merged": 0, "issues": 0, "new_pages": []}
+    docs = {"commits": 0, "prs_merged": 0, "issues_opened": 0, "issues_closed": 0, "new_pages": []}
     for e in cache["docs_events"]:
         if not (since_s <= e["date"] <= until_s):
             continue
@@ -203,8 +221,10 @@ def aggregate(cache, since, until):
             docs["new_pages"].extend(e.get("new_pages", []))
         elif e["kind"] == "pr_merged":
             docs["prs_merged"] += 1
-        elif e["kind"] == "issue":
-            docs["issues"] += 1
+        elif e["kind"] == "issue_opened":
+            docs["issues_opened"] += 1
+        elif e["kind"] == "issue_closed":
+            docs["issues_closed"] += 1
     docs["new_pages"] = sorted(set(docs["new_pages"]))
 
     other_repo_counts = Counter()

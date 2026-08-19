@@ -203,6 +203,16 @@ def chart_category(df, month_start, month_end):
     return "Tickets by category", chart_html(fig)
 
 
+RESPONSE_BUCKETS = [
+    (0, 1 / 6, "<10 min"),
+    (1 / 6, 0.5, "10-30 min"),
+    (0.5, 2, "30 min-2 hr"),
+    (2, 8, "2-8 hr"),
+    (8, 24, "8-24 hr"),
+    (24, 48, "1-2 days"),
+]
+
+
 def chart_response_distribution(df, month_start, month_end):
     scoped = df[
         (df["created"] >= month_start) & (df["created"] <= month_end)
@@ -213,14 +223,26 @@ def chart_response_distribution(df, month_start, month_end):
     scoped = scoped[scoped["time_to_first_response_hours"] <= RESPONSE_HOURS_OUTLIER_CAP]
     order = scoped.groupby("category")["time_to_first_response_hours"].median().sort_values().index.tolist()
 
-    fig = px.box(
-        scoped, x="category", y="time_to_first_response_hours",
-        category_orders={"category": order},
-        points=False,
+    bucket_labels = [label for _, _, label in RESPONSE_BUCKETS]
+    scoped["bucket"] = pd.cut(
+        scoped["time_to_first_response_hours"],
+        bins=[b[0] for b in RESPONSE_BUCKETS] + [RESPONSE_BUCKETS[-1][1]],
+        labels=bucket_labels, right=True, include_lowest=True,
     )
-    fig.update_traces(marker_color=SECTION_COLOR["tickets"], hovertemplate="%{x}: %{y:.1f} hrs<extra></extra>")
-    fig.update_xaxes(title=None)
-    fig.update_yaxes(title="Hours to first response")
+    counts = scoped.groupby(["bucket", "category"], observed=True).size().reset_index(name="count")
+    counts["pct"] = counts["count"] / len(scoped) * 100
+
+    fig = px.bar(
+        counts, x="bucket", y="pct", color="category", custom_data=["count"],
+        category_orders={"bucket": bucket_labels, "category": order},
+        color_discrete_sequence=shade_ramp(SECTION_COLOR["tickets"], len(order)),
+    )
+    fig.update_traces(
+        marker_line_width=1, marker_line_color="white",
+        hovertemplate="%{fullData.name}: %{customdata[0]} tickets (%{y:.0f}%)<extra></extra>",
+    )
+    fig.update_xaxes(title=None, showgrid=False, zeroline=False)
+    fig.update_yaxes(title=None, showgrid=True, gridcolor=GRID_COLOR, zeroline=False, ticksuffix="%")
     style_layout(fig, orientation="v", height=340)
     return "First response time by category", chart_html(fig)
 
@@ -407,7 +429,7 @@ def docs_pills(activity):
     return [
         ("Commits", f"{docs['commits']}", "to support-docs"),
         ("PRs merged", f"{docs['prs_merged']}", "to support-docs"),
-        ("Issues", f"{docs['issues']}", "opened this month"),
+        ("Issues", f"{docs['issues_opened'] + docs['issues_closed']}", "actioned this month"),
     ]
 
 

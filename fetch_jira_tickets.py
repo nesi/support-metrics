@@ -89,6 +89,11 @@ _SUFFIX_LOOKUP = sorted(
     key=lambda x: len(x[0]), reverse=True,
 )
 
+# Reporter accounts on the AgResearch eRI have their emailAddress hidden by
+# Jira's privacy settings (accountType "atlassian" with emailAddress: null).
+# Real customer accounts always have an email (see resolve_institution), so
+# this combination only shows up for AgResearch staff and associates.
+
 
 def resolve_institution(email):
     """(name, category) from a reporter's email domain; (None, None) for noise."""
@@ -165,12 +170,30 @@ def fetch_csat(earliest_date, force=False):
 
 
 def parse_issues(raw_issues, csat_by_key):
+    # Some reporters have a null emailAddress on part of their tickets (Jira
+    # privacy setting) but a visible NeSI/REANNZ email elsewhere — those are
+    # staff, not AgResearch, so the blanket rule below must skip them.
+    staff_names = {
+        (f.get("reporter") or {}).get("displayName")
+        for raw in raw_issues
+        for f in [raw["fields"]]
+        if ((f.get("reporter") or {}).get("emailAddress") or "").lower().split("@")[-1]
+        in {"nesi.org.nz", "reannz.co.nz", "reannz.org.nz"}
+    }
+
     rows = []
     for raw in raw_issues:
         f = raw["fields"]
         key = raw["key"]
-        reporter_email = (f.get("reporter") or {}).get("emailAddress")
+        reporter = f.get("reporter") or {}
+        reporter_email = reporter.get("emailAddress")
         institution, institution_category = resolve_institution(reporter_email)
+        if (
+            reporter_email is None
+            and reporter.get("accountType") == "atlassian"
+            and reporter.get("displayName") not in staff_names
+        ):
+            institution, institution_category = "AgResearch", "PRO"
 
         created = pd.to_datetime(f.get("created"), utc=True)
         resolved = pd.to_datetime(f.get("resolutiondate"), utc=True)
