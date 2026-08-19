@@ -1,7 +1,9 @@
 # Support Metrics Report
 
-Report on RST work, Includes Jira tickets, GitHub/GitLab activity, s
-upport docs, training, and software management.
+[support-metrics](https://nesi.github.io/support-metrics/)
+
+Report on RST work, Includes Jira tickets, GitHub/GitLab activity,
+support docs, training, and software management.
 
 ## Setup
 
@@ -17,17 +19,11 @@ Fill in `.env`:
 ## Run
 
 Each data source has a `fetch_x` script that updates the cache.
-`fetch_common.py` holds the pieces shared between them (cache I/O,
-`--since`/`--until`/`--refresh` args, Jira pagination) — not runnable on
-its own.
+All use `--since`/`--until`/`--refresh`
 
 `render_report.py` actually builds the report.
 
-All default to "last full calendar month". For a specific period, pass
-`--since`/`--until` (`YYYY-MM-DD`) to `fetch_github.py`,
-`fetch_modules.py`, `fetch_gitlab.py`, and `render_report.py`. The Jira
-scripts don't take a period — they maintain a running history and fetch
-incrementally instead.
+All default to "last full calendar month".
 
 All fetchers cache what they pull and only fetch again when a request
 exceeds what's already cached, never re-fetching data they already have:

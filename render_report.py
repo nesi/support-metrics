@@ -1,8 +1,8 @@
 """
-Assemble a single self-contained HTML report for one calendar month.
+Assemble a single HTML report for one calendar month.
 
-Charts are Plotly, embedded inline: plotly.js itself is written into the
-page once (in <head>).
+Charts are Plotly; plotly.js is loaded from a CDN in <head> rather than
+inlined, to keep the report file small.
 
 Run after the fetch scripst have produced their files.
 """
@@ -22,7 +22,6 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-import plotly.offline as pyo
 from wordcloud import WordCloud, STOPWORDS
 
 DOCS_REPO_URL = "https://github.com/nesi/support-docs/blob/main"
@@ -536,7 +535,6 @@ def render(month_start, month_end):
 
     html = string.Template(TEMPLATE_PATH.read_text()).substitute(
         month_label=month_start.strftime("%B %Y"),
-        plotly_js=pyo.get_plotlyjs(),
         sections=tickets_section + docs_section + other_section + training_section + builds_section,
     )
 
