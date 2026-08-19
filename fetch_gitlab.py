@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-from fetch_common import add_period_args, read_json, resolve_period, write_json
+from fetch_common import add_ARGS, read_json, resolve_period, write_json
 
 load_dotenv()
 
@@ -144,7 +144,7 @@ def fetch(since, until, force=False):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    add_period_args(parser, "Rebuild the raw event log from scratch")
+    add_ARGS(parser, "Rebuild the raw event log from scratch")
     args = parser.parse_args()
     since, until = resolve_period(args)
 

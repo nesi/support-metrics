@@ -40,7 +40,7 @@ def github_token():
     return result.stdout.strip()
 
 
-def add_period_args(parser, refresh_help="Rebuild the cache from scratch"):
+def add_ARGS(parser, refresh_help="Rebuild the cache from scratch"):
     parser.add_argument("--since", type=date.fromisoformat)
     parser.add_argument("--until", type=date.fromisoformat)
     parser.add_argument("--refresh", action="store_true", help=refresh_help)

@@ -34,7 +34,7 @@ from pathlib import Path
 
 import requests
 
-from fetch_common import add_period_args, github_token, read_json, resolve_period, write_json
+from fetch_common import add_ARGS, github_token, read_json, resolve_period, write_json
 
 ORG = "nesi"
 REPO = "modules-list"
@@ -133,7 +133,7 @@ def fetch(since, until):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    add_period_args(parser, "Rebuild the cached diff from scratch")
+    add_ARGS(parser, "Rebuild the cached diff from scratch")
     args = parser.parse_args()
     since, until = resolve_period(args)
 
