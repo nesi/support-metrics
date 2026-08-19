@@ -32,6 +32,7 @@ GRAY_UNSET = "#ABB0AC"
 GRID_COLOR = "#E5E7E3"
 INK = "#1E2422"
 FONT_FAMILY = "-apple-system, Segoe UI, sans-serif"
+LIST_PREVIEW_LIMIT = 8
 
 # One accent per section — used for pill labels, the section heading's
 # accent bar, and every chart in that section (see shade_ramp).
@@ -65,29 +66,20 @@ def _rgb_to_hex(rgb):
     return "#" + "".join(f"{max(0, min(255, round(c))):02x}" for c in rgb)
 
 
-def _mix(c1, c2, t):
-    return tuple(a + (b - a) * t for a, b in zip(c1, c2))
-
-
 def shade_ramp(hex_color, n, hue_shift=0.2):
-    """n distinct shades of one hue, light tint through to dark tone, with a
-    small hue rotation across the ramp (light end shifted one way, dark end
-    the other) so it reads as less flat than a pure tint/tone mix."""
+    """n pretty colors around hex_color"""
     if n <= 1:
         return [hex_color]
-    base, white, black = _hex_to_rgb(hex_color), (255, 255, 255), (0, 0, 0)
-    base_h, _, _ = colorsys.rgb_to_hls(*(c / 255 for c in base))
+    r, g, b = _hex_to_rgb(hex_color)
+    h, _, s = colorsys.rgb_to_hls(r / 255, g / 255, b / 255)
+    s = max(s, 0.35)
     shades = []
     for i in range(n):
         t = i / (n - 1)
-        if t < 0.5:
-            rgb = _mix(_mix(base, white, 0.65), base, t / 0.5)
-        else:
-            rgb = _mix(base, _mix(base, black, 0.55), (t - 0.5) / 0.5)
-        h, l, s = colorsys.rgb_to_hls(*(c / 255 for c in rgb))
-        h = (base_h + hue_shift * (t - 0.5)) % 1.0
-        rgb = colorsys.hls_to_rgb(h, l, s)
-        shades.append(_rgb_to_hex(tuple(c * 255 for c in rgb)))
+        lightness = 0.78 - t * 0.42
+        hue = (h + hue_shift * (t - 0.5)) % 1.0
+        r, g, b = colorsys.hls_to_rgb(hue, lightness, s)
+        shades.append(_rgb_to_hex((r * 255, g * 255, b * 255)))
     return shades
 
 
@@ -118,6 +110,12 @@ def previous_month_range(today=None):
     last_of_prev_month = first_of_this_month - timedelta(days=1)
     first_of_prev_month = last_of_prev_month.replace(day=1)
     return first_of_prev_month, last_of_prev_month
+
+
+def period_label(month_start, month_end):
+    if (month_start.year, month_start.month) == (month_end.year, month_end.month):
+        return month_start.strftime("%B %Y")
+    return f"{month_start.strftime('%d %b %Y')} – {month_end.strftime('%d %b %Y')}"
 
 
 def mpl_fig_to_data_uri(fig):
@@ -177,19 +175,44 @@ def chart_ticket_volume(df):
     return "Ticket volume", chart_html(fig)
 
 
+def _sunburst_fig(grouped, parent_col, child_col, count_col, base_hex):
+    top_order = grouped[parent_col].drop_duplicates().tolist()
+    top_totals = grouped.groupby(parent_col, sort=False)[count_col].sum()
+    top_colors = dict(zip(top_order, shade_ramp(base_hex, len(top_order))))
+
+    ids, labels, parent_ids, values, colors = [], [], [], [], []
+    for parent in top_order:
+        ids.append(parent)
+        labels.append(parent)
+        parent_ids.append("")
+        values.append(top_totals[parent])
+        colors.append(top_colors[parent])
+
+        children = grouped[grouped[parent_col] == parent]
+        child_colors = shade_ramp(top_colors[parent], len(children))
+        for (_, row), child_color in zip(children.iterrows(), child_colors):
+            ids.append(f"{parent}/{row[child_col]}")
+            labels.append(row[child_col])
+            parent_ids.append(parent)
+            values.append(row[count_col])
+            colors.append(child_color)
+
+    fig = go.Figure(go.Sunburst(
+        ids=ids, labels=labels, parents=parent_ids, values=values,
+        branchvalues="total", marker=dict(colors=colors),
+        hovertemplate="%{label}: %{value} tickets<extra></extra>",
+    ))
+    style_layout(fig, height=420)
+    return fig
+
+
 def chart_institutions(df, month_start, month_end):
     scoped = df[
         (df["created"] >= month_start) & (df["created"] <= month_end)
         & df["institution"].notna()
     ]
     grouped = scoped.groupby(["institution_category", "institution"]).size().reset_index(name="count")
-
-    fig = px.sunburst(
-        grouped, path=["institution_category", "institution"], values="count", color="institution_category",
-        color_discrete_sequence=shade_ramp(SECTION_COLOR["tickets"], grouped["institution_category"].nunique()),
-    )
-    fig.update_traces(hovertemplate="%{label}: %{value} tickets<extra></extra>")
-    style_layout(fig, height=420)
+    fig = _sunburst_fig(grouped, "institution_category", "institution", "count", SECTION_COLOR["tickets"])
     return "Tickets by institution", chart_html(fig)
 
 
@@ -200,13 +223,7 @@ def chart_category(df, month_start, month_end):
     core["category"] = core["category"].fillna("Unset")
     core["subcategory"] = core["subcategory"].fillna("(general)")
     grouped = core.groupby(["category", "subcategory"]).size().reset_index(name="count")
-
-    fig = px.sunburst(
-        grouped, path=["category", "subcategory"], values="count", color="category",
-        color_discrete_sequence=shade_ramp(SECTION_COLOR["tickets"], grouped["category"].nunique()),
-    )
-    fig.update_traces(hovertemplate="%{label}: %{value} tickets<extra></extra>")
-    style_layout(fig, height=420)
+    fig = _sunburst_fig(grouped, "category", "subcategory", "count", SECTION_COLOR["tickets"])
     return "Tickets by category", chart_html(fig)
 
 
@@ -250,7 +267,7 @@ def chart_response_distribution(df, month_start, month_end):
     )
     fig.update_xaxes(title=None, showgrid=False, zeroline=False)
     fig.update_yaxes(title=None, showgrid=True, gridcolor=GRID_COLOR, zeroline=False, ticksuffix="%")
-    style_layout(fig, orientation="v", height=340)
+    style_layout(fig, orientation="v")
     return "First response time by category", chart_html(fig)
 
 
@@ -305,20 +322,32 @@ def chart_csat_wordcloud(df, month_start, month_end):
 # Docs
 # --------------------------------------------------------------------------- #
 
-
 def _clean_page_name(path):
     name = path.rsplit("/", 1)[-1]
     name = name[:-3] if name.endswith(".md") else name
     return name.replace("_", " ")
 
 
+def _collapsible_list(li_items):
+    """Render <li> strings as a page-list, folding anything past
+    LIST_PREVIEW_LIMIT into a native <details> accordion."""
+    visible, hidden = li_items[:LIST_PREVIEW_LIMIT], li_items[LIST_PREVIEW_LIMIT:]
+    html = f'<ul class="page-list">{"".join(visible)}</ul>'
+    if hidden:
+        html += (
+            f'<details class="show-more"><summary>Show {len(hidden)} more</summary>'
+            f'<ul class="page-list">{"".join(hidden)}</ul></details>'
+        )
+    return html
+
+
 def new_pages_html(new_pages):
     color = SECTION_COLOR["docs"]
-    items = "\n".join(
+    items = [
         f'<li><a href="{DOCS_REPO_URL}/{path}" style="color:{color}">{_clean_page_name(path)}</a></li>'
         for path in new_pages
-    )
-    return f'<div class="chart-section">{card_header("New pages added", color)}<ul class="page-list">{items}</ul></div>'
+    ]
+    return f'<div class="chart-section">{card_header("New pages added", color)}{_collapsible_list(items)}</div>'
 
 
 # --------------------------------------------------------------------------- #
@@ -365,8 +394,8 @@ def chart_training_hours(training_df, month_start, month_end):
 
 def named_list_html(heading, items):
     color = SECTION_COLOR["builds"]
-    lis = "\n".join(f"<li>{item}</li>" for item in items)
-    return f'<div class="chart-section">{card_header(heading, color)}<ul class="page-list">{lis}</ul></div>'
+    lis = [f"<li>{item}</li>" for item in items]
+    return f'<div class="chart-section">{card_header(heading, color)}{_collapsible_list(lis)}</div>'
 
 
 def builds_body(modules):
@@ -477,8 +506,6 @@ def card_header(title, color):
 
 
 def chart_block(entry, color):
-    if entry is None:
-        return None
     title, fragment = entry
     return f'<div class="chart-section">{card_header(title, color)}{fragment}</div>'
 
@@ -492,7 +519,7 @@ def image_block(entry, color):
 
 def chart_row(*blocks):
     """Two small charts side by side instead of stacked full-width."""
-    return f'<div class="chart-row">{"".join(b for b in blocks if b)}</div>'
+    return f'<div class="chart-row">{"".join(blocks)}</div>'
 
 
 def section_html(title, color, pills, body):
@@ -527,12 +554,12 @@ def render(month_start, month_end):
     tickets_color = SECTION_COLOR["tickets"]
     wordcloud_entry = chart_csat_wordcloud(df, month_start_ts, month_end_ts)
     tickets_body = "".join(filter(None, [
-        chart_block(chart_ticket_volume(df), tickets_color),
-        f'<div class="headline-row">{pills_html(ticket_activity_pills(df, month_start_ts, month_end_ts), tickets_color)}</div>',
+        f'<div class="chart-hidden">{chart_block(chart_ticket_volume(df), tickets_color)}</div>',
         chart_row(
             chart_block(chart_institutions(df, month_start_ts, month_end_ts), tickets_color),
             chart_block(chart_category(df, month_start_ts, month_end_ts), tickets_color),
         ),
+        f'<div class="headline-row">{pills_html(ticket_activity_pills(df, month_start_ts, month_end_ts), tickets_color)}</div>',
         chart_block(chart_response_distribution(df, month_start_ts, month_end_ts), tickets_color),
         chart_row(
             chart_block(chart_effort(df, month_start_ts, month_end_ts), tickets_color),
@@ -581,7 +608,7 @@ def render(month_start, month_end):
     )
 
     html = string.Template(TEMPLATE_PATH.read_text()).substitute(
-        month_label=month_start.strftime("%B %Y"),
+        month_label=period_label(month_start, month_end),
         sections=tickets_section + docs_section + other_section + training_section + builds_section,
     )
 
