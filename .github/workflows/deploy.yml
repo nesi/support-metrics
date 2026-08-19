@@ -1,11 +1,4 @@
-name: Deploy report
-
-# Both fetching and rendering happen locally (fetch_render.sh) — it needs
-# Jira/GitHub/GitLab credentials this workflow doesn't have, and there's no
-# reason to redo the render in CI when it's already done. A local run
-# commits the rendered public/main.html and pushes, which triggers this.
-# All this does is publish that already-built file to GitHub Pages.
-
+name: Deploy static page
 on:
   push:
     branches: [main]
