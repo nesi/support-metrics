@@ -60,8 +60,8 @@ in a browser, no server needed.
 Runs via a cron entry at 6am on the 2nd of each month (installed
 directly with `crontab -e`, not tracked in this repo; output goes to
 `data/run.log`). It fetches, renders, copies the result to
-`public/main.html`, and pushes — that push triggers
-`.github/workflows/deploy.yml`, which publishes `public/main.html` to
+`public/index.html `, and pushes — that push triggers
+`.github/workflows/deploy.yml`, which publishes `public/index.html ` to
 GitHub Pages. `data/` and `report/` stay local-only.
 
 **Not live yet**: no GitHub remote configured, and Pages isn't enabled

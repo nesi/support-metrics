@@ -34,7 +34,7 @@ python3 render_report.py --since "$SINCE" --until "$UNTIL"
 
 # Fetching and rendering both happen here, locally — .github/workflows/deploy.yml
 
-git add public/main.html
+git add public/index.html 
 # if ! git diff --cached --quiet; then
 #   git commit -m "Report for $SINCE..$UNTIL"
 #   git push

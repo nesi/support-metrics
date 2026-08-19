@@ -2,7 +2,7 @@ name: Deploy static page
 on:
   push:
     branches: [main]
-    paths: ["public/main.html"]
+    paths: ["public/index.html "]
   workflow_dispatch:
 
 permissions:
