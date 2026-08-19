@@ -55,3 +55,4 @@ scratch.
   domain mapping (inherited from `../ticket_effort`). 
 - GitHub fetch checks the rse group, but GitLab has no such group so a manual list is provided. 
   Has to be updated for new team members.
+- All tickets raised by portal are assumed to be AgR

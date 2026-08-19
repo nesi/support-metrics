@@ -9,6 +9,7 @@ Run after the fetch scripst have produced their files.
 
 import argparse
 import base64
+import colorsys
 import io
 import json
 import string
@@ -68,11 +69,14 @@ def _mix(c1, c2, t):
     return tuple(a + (b - a) * t for a, b in zip(c1, c2))
 
 
-def shade_ramp(hex_color, n):
-    """n distinct shades of one hue, light tint through to dark tone."""
+def shade_ramp(hex_color, n, hue_shift=0.2):
+    """n distinct shades of one hue, light tint through to dark tone, with a
+    small hue rotation across the ramp (light end shifted one way, dark end
+    the other) so it reads as less flat than a pure tint/tone mix."""
     if n <= 1:
         return [hex_color]
     base, white, black = _hex_to_rgb(hex_color), (255, 255, 255), (0, 0, 0)
+    base_h, _, _ = colorsys.rgb_to_hls(*(c / 255 for c in base))
     shades = []
     for i in range(n):
         t = i / (n - 1)
@@ -80,7 +84,10 @@ def shade_ramp(hex_color, n):
             rgb = _mix(_mix(base, white, 0.65), base, t / 0.5)
         else:
             rgb = _mix(base, _mix(base, black, 0.55), (t - 0.5) / 0.5)
-        shades.append(_rgb_to_hex(rgb))
+        h, l, s = colorsys.rgb_to_hls(*(c / 255 for c in rgb))
+        h = (base_h + hue_shift * (t - 0.5)) % 1.0
+        rgb = colorsys.hls_to_rgb(h, l, s)
+        shades.append(_rgb_to_hex(tuple(c * 255 for c in rgb)))
     return shades
 
 
