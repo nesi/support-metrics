@@ -1,9 +1,13 @@
 # Support Metrics Report
 
+Includes nice bright colors, and _pie charts_.
+
 [support-metrics](https://nesi.github.io/support-metrics/)
 
 Report on RST work, Includes Jira tickets, GitHub/GitLab activity,
 support docs, training, and software management.
+
+Currently just running locally, but plan to schedule run on cluster.
 
 ## Setup
 
@@ -14,7 +18,7 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Fill in `.env`:
+Fill in `.env`.
 
 ## Run
 
@@ -45,9 +49,9 @@ scratch.
 ./fetch_render.sh 2026-07-01 2026-07-31  # explicit period
 ```
 
-## Known data quirks
+## Data
 
-- **Institution categorization** relies on a `SUFFIX_TO_INSTITUTION`
-  domain mapping (inherited from `../ticket_effort`).
+- Institution categorization relies on a `SUFFIX_TO_INSTITUTION`
+  domain mapping (inherited from `../ticket_effort`). 
 - GitHub fetch checks the rse group, but GitLab has no such group so a manual list is provided. 
   Has to be updated for new team members.

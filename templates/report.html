@@ -30,5 +30,11 @@ footer { margin-top: 3rem; font-size: 0.8rem; color: #8A948F; }
   <p class="subtitle">$month_label &middot; REANNZ Researcher Support</p>
 
   $sections
+
+  <script>
+    window.addEventListener("load", () => {
+      document.querySelectorAll(".js-plotly-plot").forEach(gd => Plotly.Plots.resize(gd));
+    });
+  </script>
 </body>
 </html>

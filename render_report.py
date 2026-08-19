@@ -494,7 +494,7 @@ def render(month_start, month_end):
         image_block(wordcloud_entry, tickets_color),
     ]))
     tickets_section = section_html(
-        "Tickets", tickets_color,
+        "Strategic Customer Support Ticket Performance", tickets_color,
         pills_html(ticket_pills(df, month_start_ts, month_end_ts, prev_start_ts), tickets_color),
         tickets_body,
     )
@@ -502,7 +502,7 @@ def render(month_start, month_end):
     # Docs
     docs_body = new_pages_html(activity["support_docs"]["new_pages"])
     docs_section = section_html(
-        "Docs", SECTION_COLOR["docs"],
+        "Core User Knowledge Base Contributions", SECTION_COLOR["docs"],
         pills_html(docs_pills(activity), SECTION_COLOR["docs"]),
         docs_body,
     )
@@ -511,7 +511,7 @@ def render(month_start, month_end):
     other_color = SECTION_COLOR["other"]
     other_body = chart_block(chart_repo_activity(activity), other_color)
     other_section = section_html(
-        "Other Contributions", other_color,
+        "Full Stack Software Synergies", other_color,
         pills_html(other_pills(activity), other_color),
         other_body,
     )
@@ -520,7 +520,7 @@ def render(month_start, month_end):
     training_color = SECTION_COLOR["training"]
     training_body = chart_block(chart_training_hours(training_df, training_start_ts, training_end_ts), training_color)
     training_section = section_html(
-        "Training", training_color,
+        "Community Enablement Training & Stakeholder Engagement", training_color,
         pills_html(training_pills(training_df, training_start_ts, training_end_ts), training_color),
         training_body,
     )
@@ -528,7 +528,7 @@ def render(month_start, month_end):
     # Software Builds
     modules = load_modules(month_start, month_end)
     builds_section = section_html(
-        "Software Builds", SECTION_COLOR["builds"],
+        "Mission-Critical Software Build Deliverables", SECTION_COLOR["builds"],
         pills_html(builds_pills(modules), SECTION_COLOR["builds"]),
         builds_body(modules),
     )
