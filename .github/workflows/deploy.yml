@@ -1,0 +1,37 @@
+name: Deploy report
+
+# Both fetching and rendering happen locally (fetch_render.sh) — it needs
+# Jira/GitHub/GitLab credentials this workflow doesn't have, and there's no
+# reason to redo the render in CI when it's already done. A local run
+# commits the rendered public/main.html and pushes, which triggers this.
+# All this does is publish that already-built file to GitHub Pages.
+
+on:
+  push:
+    branches: [main]
+    paths: ["public/main.html"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+      - id: deployment
+        uses: actions/deploy-pages@v4
