@@ -356,14 +356,17 @@ def new_pages_html(new_pages):
 
 def chart_repo_activity(activity):
     by_repo = activity["other_contributions"]["by_repo"]
-    series = pd.Series(by_repo).sort_values()
+    series = pd.Series(by_repo).sort_values(ascending=False).head(20).sort_values()
     labels = [name.split("/", 1)[-1] for name in series.index]
+
     fig = go.Figure(go.Bar(
         x=series.values, y=labels, orientation="h",
         marker_color=shade_ramp(SECTION_COLOR["other"], len(labels)),
+        text=[f"{v:,}" for v in series.values], textposition="outside",
         hovertemplate="%{y}: %{x}<extra></extra>",
     ))
     fig.update_yaxes(categoryorder="array", categoryarray=labels)
+    fig.update_xaxes(type="log")
     style_layout(fig, orientation="h", height=380)
     return "Activity by repo", chart_html(fig)
 
@@ -423,10 +426,10 @@ def pills_html(cards, color):
 
 def ticket_pills(df, month_start_ts, month_end_ts, prev_start_ts):
     this_month = df[(df["created"] >= month_start_ts) & (df["created"] <= month_end_ts)]
-    prev_month = df[(df["created"] >= prev_start_ts) & (df["created"] < month_start_ts)]
+    prev_period = df[(df["created"] >= prev_start_ts) & (df["created"] < month_start_ts)]
 
     volume = len(this_month)
-    delta = volume - len(prev_month)
+    delta = volume - len(prev_period)
     csat = this_month["csat_rating"].dropna()
     pct_positive = (csat >= 4).mean() if len(csat) else None
 
@@ -443,7 +446,7 @@ def ticket_pills(df, month_start_ts, month_end_ts, prev_start_ts):
         solve_sub = "average solve time"
 
     return [
-        ("Volume", f"{volume:,} tickets", f"{delta:+d} vs. prior month"),
+        ("Volume", f"{volume:,} tickets", f"{delta:+d} vs. prior period"),
         ("Quality", f"{pct_positive:.0%} positive" if pct_positive is not None else "no ratings yet",
          f"{len(csat)} CSAT responses"),
         ("Average solve time", solve_figure, solve_sub),
@@ -545,7 +548,8 @@ def render(month_start, month_end):
 
     month_start_ts = pd.Timestamp(month_start, tz="UTC")
     month_end_ts = pd.Timestamp(month_end, tz="UTC") + pd.Timedelta(hours=23, minutes=59, seconds=59)
-    prev_start_ts = (month_start_ts - pd.Timedelta(days=1)).replace(day=1)
+    period_days = (month_end - month_start).days + 1
+    prev_start_ts = month_start_ts - pd.Timedelta(days=period_days)
 
     training_start_ts = pd.Timestamp(month_start)
     training_end_ts = pd.Timestamp(month_end) + pd.Timedelta(hours=23, minutes=59, seconds=59)
