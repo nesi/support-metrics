@@ -73,7 +73,13 @@ def commit_as_of(target_date):
 def commit_rounded_up(target_date):
     """First commit at or after target_date — round UP to the next commit
     rather than back to the last one before it."""
-    commits = _commits({"since": f"{target_date}T00:00:00Z"})
+    params = {"path": FILE_PATH, "per_page": 100, "since": f"{target_date}T00:00:00Z"}
+    resp = _session.get(f"https://api.github.com/repos/{ORG}/{REPO}/commits", params=params, timeout=20)
+    resp.raise_for_status()
+    if "last" in resp.links:  # more than one page -- the oldest commit is on the last one
+        resp = _session.get(resp.links["last"]["url"], timeout=20)
+        resp.raise_for_status()
+    commits = resp.json()
     if not commits:
         raise RuntimeError(f"No commits to {FILE_PATH} found at or after {target_date}")
     return commits[-1]  # newest-first, so the last item is the oldest in this window
