@@ -1,11 +1,20 @@
 """
 Fetch FS project tickets for the support metrics report.
-Institution-from-email logic copied from ../ticket_effort/fetch_issues.py.
 
---refresh rebuilds both caches from scratch.
+Institution is resolved from the reporter's JSM organization membership
+(GET /rest/servicedeskapi/organization?accountId=...), which is populated
+per-customer independently of any per-ticket field and works even when the
+reporter's email is hidden (e.g. AgResearch eRI accounts). Falls back to
+reporter-email-domain matching for reporters not (yet) linked to a known
+org, which also covers Commercial customers -- JSM has no org record for
+an arbitrary commercial domain.
+Logic copied from ../ticket_effort/{fetch_issues,checks}.py.
+
+--refresh rebuilds all caches from scratch.
 """
 
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import pandas as pd
@@ -23,7 +32,9 @@ PROJECT = "FS"
 CACHE_FILE = Path("data/tickets_cache.json")
 CSAT_CACHE_FILE = Path("data/csat_cache.json")
 CSAT_PAGE_SIZE = 100
-CSAT_OVERLAP_DAYS = 3 
+CSAT_OVERLAP_DAYS = 3
+REPORTER_ORG_CACHE_FILE = Path("data/reporter_orgs_cache.json")
+REPORTER_ORG_WORKERS = 10
 
 FIELDS = [
     "reporter",
@@ -34,6 +45,44 @@ FIELDS = [
     "customfield_10800",  # Operational categorization (category / subcategory)
     "customfield_11475",  # Effort (Low / Medium / High, set manually)
 ]
+
+# Maps a JSM organization id to (institution, category). Copied from
+# ../ticket_effort/checks.py's ORG_ID_MAP, scoped to orgs linked to the FS
+# service desk. Matched by id rather than the org record's own "name" --
+# that name doesn't always match our canonical institution names (e.g. id
+# 409's JSM name is "The University of Auckland"), and the site-wide org
+# list also has unrelated/duplicate records we want to ignore.
+ORG_ID_TO_INSTITUTION = {
+    "409": ("University of Auckland", "Tertiary"),
+    "410": ("AUT", "Tertiary"),
+    "389": ("University of Canterbury", "Tertiary"),
+    "586": ("Lincoln University", "Tertiary"),
+    "392": ("Massey University", "Tertiary"),
+    "386": ("University of Otago", "Tertiary"),
+    "387": ("Victoria University of Wellington", "Tertiary"),
+    "384": ("University of Waikato", "Tertiary"),
+    "598": ("Toi Ohomai", "Tertiary"),
+    "575": ("Otago Polytechnic", "Tertiary"),
+    "562": ("NMIT", "Tertiary"),
+    "497": ("Ara", "Tertiary"),
+    "622": ("WelTec / Whitireia", "Tertiary"),
+    "370": ("NeSI (internal)", "Internal"),
+    "379": ("REANNZ (internal)", "Internal"),
+    "380": ("Landcare Research", "PRO"),
+    "375": ("NIWA", "PRO"),
+    "374": ("AgResearch", "PRO"),
+    "376": ("GNS Science", "PRO"),
+    "620": ("Scion", "PRO"),
+    "398": ("Plant & Food Research", "PRO"),
+    "390": ("LIC", "PRO"),
+    "377": ("Pacific Community (SPC)", "PRO"),
+    "413": ("MPI", "PRO"),
+    "671": ("Earth Sciences New Zealand", "PRO"),
+    "530": ("ESR", "PRO"),
+    "507": ("Cawthron Institute", "PRO"),
+    "672": ("Bodeker Scientific", "PRO"),
+    "673": ("MATAI Medical Research Institute", "PRO"),
+}
 
 # Copied from ../ticket_effort/fetch_issues.py. Category is attached here
 # since it's already known at match time.
@@ -89,14 +138,16 @@ _SUFFIX_LOOKUP = sorted(
     key=lambda x: len(x[0]), reverse=True,
 )
 
-# Reporter accounts on the AgResearch eRI have their emailAddress hidden by
-# Jira's privacy settings (accountType "atlassian" with emailAddress: null).
-# Real customer accounts always have an email (see resolve_institution), so
-# this combination only shows up for AgResearch staff and associates.
+def resolve_institution(email, org_ids):
+    """(name, category) from the reporter's JSM organization membership,
+    falling back to their email domain when they're not linked to a known
+    org. (None, None) for internal staff and noise domains/orgs."""
+    for org_id in org_ids or []:
+        match = ORG_ID_TO_INSTITUTION.get(org_id)
+        if match:
+            name, category = match
+            return (None, None) if category == "Internal" else (name, category)
 
-
-def resolve_institution(email):
-    """(name, category) from a reporter's email domain; (None, None) for noise."""
     if not email:
         return None, None
     domain = email.lower().split("@")[-1]
@@ -117,6 +168,36 @@ def _strip_comment_bodies(issue):
     issue["fields"]["comment"] = {
         "comments": [{"created": c["created"]} for c in comments]
     }
+
+
+def _fetch_reporter_org_ids(account_id):
+    """Return (account_id, [org_id, ...]) for a customer's JSM org membership."""
+    resp = _session.get(
+        f"{JIRA_BASE_URL}/rest/servicedeskapi/organization",
+        params={"accountId": account_id},
+        timeout=30,
+    )
+    if resp.status_code == 404:  # deleted/unknown customer -- fall back to email domain
+        return account_id, []
+    resp.raise_for_status()
+    return account_id, [org["id"] for org in resp.json()["values"]]
+
+
+def fetch_reporter_orgs(account_ids, force=False):
+    """Org ids per reporter accountId, cached -- org membership rarely changes."""
+    cache = {} if force else (read_json(REPORTER_ORG_CACHE_FILE) or {})
+    missing = [a for a in account_ids if a not in cache]
+
+    print(f"reporter orgs: {len(cache):,} cached, {len(missing):,} to fetch")
+    if missing:
+        with ThreadPoolExecutor(max_workers=REPORTER_ORG_WORKERS) as pool:
+            futures = [pool.submit(_fetch_reporter_org_ids, a) for a in missing]
+            for fut in as_completed(futures):
+                account_id, org_ids = fut.result()
+                cache[account_id] = org_ids
+
+    write_json(REPORTER_ORG_CACHE_FILE, cache)
+    return cache
 
 
 def _fetch_csat_page(start_date, end_date, start):
@@ -169,31 +250,15 @@ def fetch_csat(earliest_date, force=False):
     return ratings
 
 
-def parse_issues(raw_issues, csat_by_key):
-    # Some reporters have a null emailAddress on part of their tickets (Jira
-    # privacy setting) but a visible NeSI/REANNZ email elsewhere — those are
-    # staff, not AgResearch, so the blanket rule below must skip them.
-    staff_names = {
-        (f.get("reporter") or {}).get("displayName")
-        for raw in raw_issues
-        for f in [raw["fields"]]
-        if ((f.get("reporter") or {}).get("emailAddress") or "").lower().split("@")[-1]
-        in {"nesi.org.nz", "reannz.co.nz", "reannz.org.nz"}
-    }
-
+def parse_issues(raw_issues, csat_by_key, reporter_orgs):
     rows = []
     for raw in raw_issues:
         f = raw["fields"]
         key = raw["key"]
         reporter = f.get("reporter") or {}
         reporter_email = reporter.get("emailAddress")
-        institution, institution_category = resolve_institution(reporter_email)
-        if (
-            reporter_email is None
-            and reporter.get("accountType") == "atlassian"
-            and reporter.get("displayName") not in staff_names
-        ):
-            institution, institution_category = "AgResearch", "PRO"
+        org_ids = reporter_orgs.get(reporter.get("accountId"))
+        institution, institution_category = resolve_institution(reporter_email, org_ids)
 
         created = pd.to_datetime(f.get("created"), utc=True)
         resolved = pd.to_datetime(f.get("resolutiondate"), utc=True)
@@ -238,6 +303,13 @@ if __name__ == "__main__":
     earliest_date = min(i["fields"]["created"] for i in raw_issues)
     csat = fetch_csat(earliest_date, force=force)
 
-    df = parse_issues(raw_issues, csat)
+    account_ids = {
+        i["fields"]["reporter"].get("accountId")
+        for i in raw_issues
+        if i["fields"].get("reporter")
+    } - {None}
+    reporter_orgs = fetch_reporter_orgs(account_ids, force=force)
+
+    df = parse_issues(raw_issues, csat, reporter_orgs)
     Path("data").mkdir(exist_ok=True)
     df.to_csv("data/tickets.csv", index=False)
